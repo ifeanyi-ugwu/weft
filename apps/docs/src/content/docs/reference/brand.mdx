@@ -1,0 +1,41 @@
+---
+title: Brand
+description: The Weft name, mark, colours and type.
+---
+
+## Name
+
+Weft is always written lowercase in the wordmark (`weft`) and capitalised in running text ("Weft"). In a weave, the **warp** threads are fixed on the loom and the **weft** passes through them. Here the network is the warp; your identity and transactions are the weft.
+
+When referring to Fabric, use the tagline: **weft — an identity wallet for Hyperledger Fabric**. Keep "Hyperledger" and "Fabric" out of the name and logo; they're Linux Foundation trademarks.
+
+## Mark
+
+Three weft threads pass over and under two warp threads. At 24px and below, the weave drops away and the threads become three bars.
+
+| | File |
+|---|---|
+| ![Weft mark](../../../assets/mark.svg) | `packages/brand/logo/mark.svg`: default |
+| | `mark-inverted.svg`: on teal or light backgrounds |
+| | `mark-small.svg`: 16–24px |
+| | `lockup-dark.svg`, `lockup-light.svg`: mark plus wordmark |
+
+## Colour
+
+| Swatch | Name | Hex | Use |
+|---|---|---|---|
+| <span style="display:inline-block;width:2rem;height:1.25rem;border-radius:4px;background:#0B1218;border:1px solid #2C3A48"></span> | Ink | `#0B1218` | Background |
+| <span style="display:inline-block;width:2rem;height:1.25rem;border-radius:4px;background:#17212B"></span> | Slate | `#17212B` | Cards |
+| <span style="display:inline-block;width:2rem;height:1.25rem;border-radius:4px;background:#3FC1B0"></span> | Thread | `#3FC1B0` | The only brand accent |
+| <span style="display:inline-block;width:2rem;height:1.25rem;border-radius:4px;background:#E8A33D"></span> | Amber | `#E8A33D` | Warnings and ledger writes only |
+| <span style="display:inline-block;width:2rem;height:1.25rem;border-radius:4px;background:#E5675B"></span> | Signal | `#E5675B` | Failures only |
+| <span style="display:inline-block;width:2rem;height:1.25rem;border-radius:4px;background:#F5F3EE;border:1px solid #C9C4B8"></span> | Linen | `#F5F3EE` | Light backgrounds |
+
+Amber and Signal carry meaning. Don't use them for decoration, or people stop noticing them.
+
+## Type
+
+- **IBM Plex Sans**: interface text and explanations.
+- **IBM Plex Mono**: anything a user might copy or compare (MSP IDs, transaction IDs, fingerprints, function names, arguments) and the wordmark.
+
+Tokens for both, plus spacing and radii, are in `packages/brand/tokens.css` and `tokens.json`.

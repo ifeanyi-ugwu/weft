@@ -1,0 +1,27 @@
+/* Weft design tokens. Thread is the only brand accent; amber and signal are
+   reserved for certificate health and transaction status. */
+:root {
+  --weft-ink: #0b1218;
+  --weft-slate: #17212b;
+  --weft-surface: #111a23;
+  --weft-line: #22303d;
+  --weft-line-strong: #2c3a48;
+  --weft-text: #e8ecef;
+  --weft-text-muted: #a9b5c1;
+  --weft-text-subtle: #94a3b3;
+  --weft-thread: #3fc1b0;
+  --weft-thread-soft: #102826;
+  --weft-amber: #e8a33d;
+  --weft-amber-soft: #2a2214;
+  --weft-signal: #e5675b;
+  --weft-signal-soft: #2a1817;
+  --weft-linen: #f5f3ee;
+
+  --weft-font-sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --weft-font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+
+  --weft-radius-sm: 6px;
+  --weft-radius-md: 10px;
+  --weft-radius-lg: 12px;
+  --weft-radius-xl: 16px;
+}

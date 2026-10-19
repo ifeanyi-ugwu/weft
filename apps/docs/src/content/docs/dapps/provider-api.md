@@ -1,0 +1,113 @@
+---
+title: Provider API
+description: The window.weft provider, its methods, events and error codes.
+---
+
+The extension injects `window.weft` into HTTPS pages and `localhost`. The types live in `@weft/protocol`.
+
+```ts
+interface WeftProvider {
+  readonly isWeft: true;
+  readonly version: string;
+  request(args: { method: string; params?: unknown }): Promise<unknown>;
+  on(event: string, listener: (payload: unknown) => void): void;
+  off(event: string, listener: (payload: unknown) => void): void;
+}
+```
+
+The provider may be injected after your script runs. Wait for the `weft#initialized` event on `window`, or use `detectProvider()` from `@weft/sdk`, which does this for you.
+
+## Methods
+
+| Method | Params | Result | Asks the user |
+|---|---|---|---|
+| `weft_connect` | – | `IdentitySummary` | Yes, once per site |
+| `weft_identity` | – | `IdentitySummary \| null` | No |
+| `weft_networks` | – | `NetworkSummary[]` | No |
+| `weft_evaluate` | `ContractCall` | `EvaluateResult` | Every time |
+| `weft_submit` | `ContractCall` | `SubmitResult` | Every time |
+
+`weft_identity` returns `null` for sites that aren't connected. `weft_networks`, `weft_evaluate` and `weft_submit` fail with `4100` until the site is connected.
+
+### Types
+
+```ts
+interface IdentitySummary {
+  id: string;
+  name: string;                         // certificate common name
+  mspId: string;                        // e.g. "Org1MSP"
+  role: string | null;                  // NodeOU: "client", "admin", "peer", "orderer"
+  attributes: Record<string, string>;   // Fabric CA attributes, including hf.*
+  issuer: string;
+  notAfter: string;                     // ISO 8601
+  fingerprint: string;                  // SHA-256, colon-separated hex
+  certificate: string;                  // PEM
+}
+
+interface NetworkSummary {
+  id: string;
+  name: string;
+  mspId: string;
+  channels: string[];
+}
+
+interface ContractCall {
+  channel: string;
+  chaincode: string;
+  contract?: string;                    // contract name inside the chaincode
+  fn: string;
+  args?: string[];
+  transient?: Record<string, string>;   // private data inputs
+  endorsingOrganizations?: string[];
+}
+
+interface EvaluateResult {
+  text: string | null;                  // UTF-8 result, or null if the bytes aren't text
+  base64: string;
+}
+
+interface SubmitResult extends EvaluateResult {
+  transactionId: string;
+  blockNumber: string;                  // a string, because Fabric block numbers are 64-bit
+  status: string;                       // "VALID"
+}
+```
+
+## Events
+
+| Event | Payload | When |
+|---|---|---|
+| `identityChanged` | `IdentitySummary \| null` | The user switched, renewed or removed the active identity. |
+| `networkChanged` | `{ networkId, channel }` | The user picked a different channel. |
+| `disconnect` | `{ reason }` | Reserved. |
+
+Events reach connected sites only.
+
+## Errors
+
+Rejected promises carry `{ code, message, data? }` (a `WeftError` when you use the SDK).
+
+| Code | Name | Meaning |
+|---|---|---|
+| `4001` | UserRejected | The user rejected the request or closed the window. |
+| `4100` | Unauthorized | The site isn't connected. Call `weft_connect`. |
+| `4200` | UnsupportedMethod | Unknown method. |
+| `4300` | NoIdentity | Weft has no identity yet. |
+| `4301` | CertificateExpired | The active certificate has expired. |
+| `5001` | TransactionFailed | The network rejected the transaction. `data` has the Fabric code and, for endorsement failures, per-peer details. |
+| `5002` | NetworkUnavailable | The relay couldn't be reached. |
+| `-32602` | InvalidParams | Malformed params. |
+| `-32603` | Internal | Anything else, including Weft refusing to sign mismatched bytes. |
+
+## Without the SDK
+
+```js
+window.addEventListener("weft#initialized", async () => {
+  const me = await window.weft.request({ method: "weft_connect" });
+  const result = await window.weft.request({
+    method: "weft_evaluate",
+    params: { channel: "mychannel", chaincode: "basic", fn: "GetAllAssets" },
+  });
+  console.log(me.name, JSON.parse(result.text));
+});
+```

@@ -1,0 +1,13 @@
+packages:
+  - "packages/*"
+  - "apps/*"
+
+onlyBuiltDependencies:
+  - esbuild
+  - sharp
+  - spawn-sync
+
+# fabric-gateway's optional HSM support (pkcs11js) is not used by the relay.
+ignoredBuiltDependencies:
+  - pkcs11js
+  - protobufjs

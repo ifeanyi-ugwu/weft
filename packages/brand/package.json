@@ -1,0 +1,13 @@
+{
+  "name": "@weft/brand",
+  "version": "0.1.0",
+  "license": "Apache-2.0",
+  "description": "Weft logo files and design tokens",
+  "type": "module",
+  "exports": {
+    "./tokens.css": "./tokens.css",
+    "./tokens.json": "./tokens.json",
+    "./logo/*": "./logo/*"
+  },
+  "files": ["logo", "tokens.css", "tokens.json"]
+}

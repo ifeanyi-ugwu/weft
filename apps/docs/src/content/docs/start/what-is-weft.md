@@ -1,0 +1,44 @@
+---
+title: What is Weft?
+description: How Weft differs from an Ethereum wallet, and the three pieces that make it work.
+---
+
+Weft is a browser extension that lets you use web apps built on [Hyperledger Fabric](https://hyperledger-fabric.readthedocs.io/) the way MetaMask lets you use Ethereum apps: the app asks, you see exactly what it wants, and you approve or reject.
+
+## How it differs from a crypto wallet
+
+Fabric is a **permissioned** network. There are no coins, no gas and no public addresses. Instead:
+
+| Ethereum wallet | Weft |
+|---|---|
+| A private key you generate yourself | A certificate issued by your organisation's CA |
+| An address anyone can send to | An identity: your name, your organisation's MSP ID, your role and attributes |
+| Networks: Mainnet, Sepolia… | A network and its **channels**: separate ledgers shared by a set of organisations |
+| A balance | Certificate health: when it expires and whether it still works |
+| "Send 0.1 ETH" | "Call `TransferAsset("asset6", "Christopher")` on the `basic` contract" |
+
+So Weft's home screen shows who you are on the network, not how much you hold.
+
+## The three pieces
+
+```
+  Your browser                     Your organisation
+ ┌──────────────────────┐         ┌───────────────────────────┐
+ │ Web app              │         │                           │
+ │   │ window.weft      │         │  Weft relay ──gRPC──▶ Peer │
+ │   ▼                  │  HTTPS  │      ▲                    │
+ │ Weft extension ──────┼────────▶│      │                    │
+ │  (keys, approvals)   │         │  Fabric CA (enrolment)    │
+ └──────────────────────┘         └───────────────────────────┘
+```
+
+1. **The extension** holds your identities and signs. It shows every request before signing.
+2. **The relay** runs inside your organisation, next to its peers. Browsers can't speak Fabric's gRPC protocol, so the relay builds the unsigned messages, the extension signs them, and the relay forwards the signed bytes. The relay never sees your private key. [Why a relay?](/reference/decisions/)
+3. **The org invite** is a link your network administrator shares. It tells Weft where your CA and relay are, so you never type a URL.
+
+## What you'll need
+
+- Chrome, Edge, Brave or another Chromium browser.
+- From your network administrator: an **invite link**, plus an **enrollment ID and secret**. If they don't use invites yet, the CA URL, relay URL, MSP ID and channel names do the same job.
+
+Next: [install Weft and add your first identity](/start/install/).

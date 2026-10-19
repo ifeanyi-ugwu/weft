@@ -1,0 +1,45 @@
+/* Weft colours mapped onto Starlight's theme variables.
+   Source of truth: packages/brand/tokens.css */
+:root {
+  --sl-font: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --sl-font-mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+}
+
+:root[data-theme="dark"] {
+  --sl-color-accent-low: #102826;
+  --sl-color-accent: #2fa596;
+  --sl-color-accent-high: #8fe3d8;
+  --sl-color-white: #e8ecef;
+  --sl-color-gray-1: #d3dae0;
+  --sl-color-gray-2: #a9b5c1;
+  --sl-color-gray-3: #94a3b3;
+  --sl-color-gray-4: #5b6672;
+  --sl-color-gray-5: #2c3a48;
+  --sl-color-gray-6: #17212b;
+  --sl-color-black: #0b1218;
+}
+
+:root[data-theme="light"] {
+  --sl-color-accent-low: #cdeee9;
+  --sl-color-accent: #1f7f73;
+  --sl-color-accent-high: #11463f;
+  --sl-color-white: #0b1218;
+  --sl-color-gray-1: #17212b;
+  --sl-color-gray-2: #2e3842;
+  --sl-color-gray-3: #5b6672;
+  --sl-color-gray-4: #8a949e;
+  --sl-color-gray-5: #c9c4b8;
+  --sl-color-gray-6: #ece8df;
+  --sl-color-gray-7: #f5f3ee;
+  --sl-color-black: #fbfaf7;
+}
+
+.site-title img {
+  height: 2rem;
+  width: auto;
+}
+
+/* Identifiers read as identifiers. */
+.sl-markdown-content code {
+  font-size: 0.875em;
+}

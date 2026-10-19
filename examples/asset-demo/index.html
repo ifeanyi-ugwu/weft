@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Asset demo · Weft</title>
+    <style>
+      body { margin: 0; font: 15px/1.5 system-ui, sans-serif; background: #f5f3ee; color: #141a20; }
+      main { max-width: 720px; margin: 0 auto; padding: 48px 16px; display: grid; gap: 20px; }
+      h1 { margin: 0; font-size: 28px; }
+      .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+      button { font: inherit; padding: 10px 16px; border-radius: 10px; border: 1px solid #c9c4b8; background: #fff; cursor: pointer; }
+      button.primary { background: #1f7f73; color: #fff; border-color: #1f7f73; }
+      input { font: inherit; padding: 9px 12px; border-radius: 10px; border: 1px solid #c9c4b8; }
+      table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 12px; overflow: hidden; }
+      th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid #ece8df; font-size: 14px; }
+      code, .mono { font-family: ui-monospace, Menlo, monospace; }
+      #log { white-space: pre-wrap; font: 12px/1.5 ui-monospace, Menlo, monospace; background: #fff; padding: 12px; border-radius: 12px; min-height: 60px; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Asset demo</h1>
+      <p>
+        Talks to the <code>basic</code> chaincode on <code>mychannel</code> through Weft. Serve this folder on
+        <code>localhost</code> (for example <code>npx serve examples/asset-demo</code>) with the extension installed.
+      </p>
+
+      <div class="row">
+        <button id="connect" class="primary">Connect Weft</button>
+        <span id="who" class="mono"></span>
+      </div>
+
+      <div class="row">
+        <button id="init">InitLedger</button>
+        <button id="list">GetAllAssets</button>
+      </div>
+
+      <div class="row">
+        <input id="asset" value="asset6" aria-label="Asset ID" />
+        <input id="owner" value="Christopher" aria-label="New owner" />
+        <button id="transfer">TransferAsset</button>
+      </div>
+
+      <table>
+        <thead><tr><th>ID</th><th>Owner</th><th>Colour</th><th>Size</th><th>Value</th></tr></thead>
+        <tbody id="assets"></tbody>
+      </table>
+
+      <div id="log" aria-live="polite"></div>
+    </main>
+
+    <script type="module">
+      // Plain provider calls, no build step. In a real app use @weft/sdk.
+      const call = { channel: "mychannel", chaincode: "basic" };
+      const $ = (id) => document.getElementById(id);
+      const log = (message) => ($("log").textContent = `${new Date().toLocaleTimeString()}  ${message}\n` + $("log").textContent);
+
+      function provider() {
+        if (window.weft) return Promise.resolve(window.weft);
+        return new Promise((resolve, reject) => {
+          window.addEventListener("weft#initialized", () => resolve(window.weft), { once: true });
+          setTimeout(() => reject(new Error("Weft is not installed")), 3000);
+        });
+      }
+
+      async function run(label, fn) {
+        try {
+          await fn(await provider());
+        } catch (error) {
+          log(`${label} failed: [${error.code ?? "?"}] ${error.message}`);
+        }
+      }
+
+      $("connect").onclick = () =>
+        run("connect", async (weft) => {
+          const me = await weft.request({ method: "weft_connect" });
+          $("who").textContent = `${me.name} · ${me.mspId}`;
+          log(`Connected as ${me.name} (${me.mspId})`);
+        });
+
+      $("init").onclick = () =>
+        run("InitLedger", async (weft) => {
+          const r = await weft.request({ method: "weft_submit", params: { ...call, fn: "InitLedger" } });
+          log(`InitLedger committed in block ${r.blockNumber}`);
+        });
+
+      $("list").onclick = () =>
+        run("GetAllAssets", async (weft) => {
+          const r = await weft.request({ method: "weft_evaluate", params: { ...call, fn: "GetAllAssets" } });
+          const rows = JSON.parse(r.text ?? "[]");
+          $("assets").replaceChildren(
+            ...rows.map((a) => {
+              const tr = document.createElement("tr");
+              for (const v of [a.ID, a.Owner, a.Color, a.Size, a.AppraisedValue]) {
+                const td = document.createElement("td");
+                td.textContent = v;
+                tr.append(td);
+              }
+              return tr;
+            }),
+          );
+          log(`Read ${rows.length} assets`);
+        });
+
+      $("transfer").onclick = () =>
+        run("TransferAsset", async (weft) => {
+          const r = await weft.request({
+            method: "weft_submit",
+            params: { ...call, fn: "TransferAsset", args: [$("asset").value, $("owner").value] },
+          });
+          log(`Transferred in block ${r.blockNumber}, tx ${r.transactionId.slice(0, 12)}…`);
+        });
+
+      window.weft?.on?.("identityChanged", (id) => ($("who").textContent = id ? `${id.name} · ${id.mspId}` : ""));
+    </script>
+  </body>
+</html>

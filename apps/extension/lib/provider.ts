@@ -1,0 +1,296 @@
+/**
+ * Handles `window.weft` requests in the background worker: connection
+ * checks, approval windows, and running evaluate/submit through the relay.
+ */
+
+import {
+  CommitError,
+  RelayClient,
+  RelayError,
+  VerificationError,
+  certificateHealth,
+  evaluateCall,
+  submitCall,
+  summarizeIdentity,
+} from "@weft/core";
+import {
+  ErrorCode,
+  WeftError,
+  isWeftMethod,
+  type ContractCall,
+  type NetworkSummary,
+  type WeftMethod,
+} from "@weft/protocol";
+import { browser } from "wxt/browser";
+import { db, newId, type ActivityRecord, type SiteRecord } from "./db";
+import type { ApprovalOutcome, ApprovalView, ProviderEventMessage } from "./messages";
+import { activeIdentity, activeSummary, identityView, signerFor } from "./wallet";
+
+/* ------------------------------------------------------------------ */
+/* Approvals                                                           */
+/* ------------------------------------------------------------------ */
+
+interface Deferred<T> {
+  promise: Promise<T>;
+  resolve: (value: T) => void;
+}
+
+function deferred<T>(): Deferred<T> {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((r) => (resolve = r));
+  return { promise, resolve };
+}
+
+interface PendingApproval {
+  view: ApprovalView;
+  decision: Deferred<boolean>;
+  outcome: Deferred<ApprovalOutcome>;
+  windowId?: number;
+}
+
+const approvals = new Map<string, PendingApproval>();
+
+/** Closing an approval window counts as rejecting it. Call once at startup. */
+export function registerApprovalListeners(): void {
+  browser.windows.onRemoved.addListener((windowId) => {
+    for (const approval of approvals.values()) {
+      if (approval.windowId === windowId) approval.decision.resolve(false);
+    }
+  });
+}
+
+export function getApproval(id: string): ApprovalView | null {
+  return approvals.get(id)?.view ?? null;
+}
+
+/** Called by the approval window. Resolves once the request has finished running. */
+export async function decideApproval(id: string, approved: boolean): Promise<ApprovalOutcome> {
+  const approval = approvals.get(id);
+  if (!approval) return { status: "rejected" };
+  approval.decision.resolve(approved);
+  return approval.outcome.promise;
+}
+
+async function openApproval(view: ApprovalView): Promise<PendingApproval> {
+  const approval: PendingApproval = { view, decision: deferred(), outcome: deferred() };
+  approvals.set(view.id, approval);
+  const created = await browser.windows.create({
+    url: browser.runtime.getURL(`/approve.html?id=${encodeURIComponent(view.id)}`),
+    type: "popup",
+    width: 380,
+    height: 680,
+    focused: true,
+  });
+  approval.windowId = created?.id;
+  return approval;
+}
+
+function finish(approval: PendingApproval, outcome: ApprovalOutcome) {
+  approval.outcome.resolve(outcome);
+  approvals.delete(approval.view.id);
+}
+
+/* ------------------------------------------------------------------ */
+/* Sites                                                               */
+/* ------------------------------------------------------------------ */
+
+async function isConnected(origin: string): Promise<boolean> {
+  return (await db.get<SiteRecord>("sites", origin)) !== undefined;
+}
+
+async function requireConnected(origin: string): Promise<void> {
+  if (!(await isConnected(origin))) {
+    throw new WeftError(ErrorCode.Unauthorized, "Call weft_connect first; this site is not connected.");
+  }
+}
+
+/** Sends an event to every connected site's tabs. */
+export async function broadcast(event: string, payload: unknown): Promise<void> {
+  const origins = (await db.all<SiteRecord>("sites")).map((s) => s.origin);
+  if (origins.length === 0) return;
+  const message: ProviderEventMessage & { origins: string[] } = { channel: "weft-provider-event", event, payload, origins };
+  for (const tab of await browser.tabs.query({})) {
+    if (tab.id === undefined) continue;
+    browser.tabs.sendMessage(tab.id, message).catch(() => {
+      /* Tab without our content script. */
+    });
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Requests                                                            */
+/* ------------------------------------------------------------------ */
+
+function parseCall(params: unknown): ContractCall {
+  const p = (params ?? {}) as Partial<ContractCall>;
+  const bad = (msg: string): never => {
+    throw new WeftError(ErrorCode.InvalidParams, msg);
+  };
+  if (typeof p.channel !== "string" || !p.channel) bad('"channel" is required');
+  if (typeof p.chaincode !== "string" || !p.chaincode) bad('"chaincode" is required');
+  if (typeof p.fn !== "string" || !p.fn) bad('"fn" is required');
+  if (p.contract !== undefined && typeof p.contract !== "string") bad('"contract" must be a string');
+  const args = p.args ?? [];
+  if (!Array.isArray(args) || !args.every((a) => typeof a === "string")) bad('"args" must be a list of strings');
+  if (p.transient !== undefined) {
+    const ok =
+      typeof p.transient === "object" && p.transient !== null && Object.values(p.transient).every((v) => typeof v === "string");
+    if (!ok) bad('"transient" must map names to strings');
+  }
+  return {
+    channel: p.channel!,
+    chaincode: p.chaincode!,
+    ...(p.contract ? { contract: p.contract } : {}),
+    fn: p.fn!,
+    args,
+    ...(p.transient ? { transient: p.transient } : {}),
+    ...(p.endorsingOrganizations ? { endorsingOrganizations: p.endorsingOrganizations } : {}),
+  };
+}
+
+async function requireUsableIdentity() {
+  const active = await activeIdentity();
+  if (!active) throw new WeftError(ErrorCode.NoIdentity, "Weft has no identity yet. Open the extension to add one.");
+  const summary = await summarizeIdentity(active.record);
+  if (certificateHealth(summary).state === "expired") {
+    throw new WeftError(ErrorCode.CertificateExpired, "The active certificate has expired. Re-enrol in Weft.");
+  }
+  return active;
+}
+
+async function connect(origin: string) {
+  const active = await requireUsableIdentity();
+  if (await isConnected(origin)) return summarizeIdentity(active.record);
+
+  const view: ApprovalView = {
+    id: newId(),
+    origin,
+    method: "weft_connect",
+    call: null,
+    identity: await identityView(active.record.id),
+  };
+  const approval = await openApproval(view);
+  if (!(await approval.decision.promise)) {
+    finish(approval, { status: "rejected" });
+    throw new WeftError(ErrorCode.UserRejected, "The user declined to connect.");
+  }
+  await db.put<SiteRecord>("sites", { origin, connectedAt: Date.now() });
+  finish(approval, { status: "approved", activityId: null });
+  return summarizeIdentity(active.record);
+}
+
+async function runCall(origin: string, method: "weft_evaluate" | "weft_submit", params: unknown) {
+  await requireConnected(origin);
+  const call = parseCall(params);
+  const active = await requireUsableIdentity();
+
+  const view: ApprovalView = {
+    id: newId(),
+    origin,
+    method,
+    call,
+    identity: await identityView(active.record.id),
+  };
+  const approval = await openApproval(view);
+  const kind = method === "weft_submit" ? "submit" : "evaluate";
+  const base = { id: newId(), at: Date.now(), origin, identityId: active.record.id, kind, call } as const;
+
+  if (!(await approval.decision.promise)) {
+    finish(approval, { status: "rejected" });
+    throw new WeftError(ErrorCode.UserRejected, "The user rejected the request.");
+  }
+
+  const relay = new RelayClient(active.network.relayUrl);
+  const signer = { mspId: active.record.mspId, certificate: active.record.certificate };
+  const sign = signerFor(active.record);
+
+  try {
+    if (method === "weft_evaluate") {
+      const result = await evaluateCall(relay, signer, call, sign);
+      await db.put<ActivityRecord>("activity", { ...base, status: "evaluated" });
+      finish(approval, { status: "approved", activityId: base.id });
+      return result;
+    }
+    const result = await submitCall(relay, signer, call, sign);
+    await db.put<ActivityRecord>("activity", {
+      ...base,
+      status: "committed",
+      transactionId: result.transactionId,
+      blockNumber: result.blockNumber,
+      code: result.status,
+    });
+    finish(approval, { status: "approved", activityId: base.id });
+    return result;
+  } catch (error) {
+    const failure = describeFailure(error);
+    await db.put<ActivityRecord>("activity", { ...base, status: "failed", ...failure.record });
+    finish(approval, { status: "failed", activityId: base.id, title: failure.record.title, detail: failure.record.detail });
+    throw failure.error;
+  }
+}
+
+function describeFailure(error: unknown): {
+  error: WeftError;
+  record: Required<Pick<ActivityRecord, "code" | "title" | "detail">> & Partial<ActivityRecord>;
+} {
+  if (error instanceof CommitError) {
+    const e = error.explanation;
+    return {
+      error: new WeftError(ErrorCode.TransactionFailed, e.title, {
+        transactionId: error.transactionId,
+        status: error.status,
+      }),
+      record: { code: error.status, title: e.title, detail: e.detail, transactionId: error.transactionId },
+    };
+  }
+  if (error instanceof RelayError) {
+    const e = error.explanation;
+    const code = error.kind === "unreachable" ? ErrorCode.NetworkUnavailable : ErrorCode.TransactionFailed;
+    return {
+      error: new WeftError(code, e.title, { code: e.code, details: error.details }),
+      record: { code: e.code, title: e.title, detail: e.detail, ...(error.details ? { endorsers: error.details } : {}) },
+    };
+  }
+  if (error instanceof VerificationError) {
+    return {
+      error: new WeftError(ErrorCode.Internal, error.message),
+      record: {
+        code: "VERIFICATION_FAILED",
+        title: "Weft refused to sign",
+        detail: `${error.message} The relay may be misconfigured or compromised.`,
+      },
+    };
+  }
+  const message = error instanceof Error ? error.message : String(error);
+  return {
+    error: new WeftError(ErrorCode.Internal, message),
+    record: { code: "INTERNAL", title: "Something went wrong in Weft", detail: message },
+  };
+}
+
+export async function handleProviderRequest(origin: string, method: unknown, params: unknown): Promise<unknown> {
+  if (!isWeftMethod(method)) {
+    throw new WeftError(ErrorCode.UnsupportedMethod, `Unknown method ${String(method)}`);
+  }
+  switch (method) {
+    case "weft_connect":
+      return connect(origin);
+    case "weft_identity":
+      return (await isConnected(origin)) ? activeSummary() : null;
+    case "weft_networks": {
+      await requireConnected(origin);
+      const active = await activeIdentity();
+      if (!active) return [];
+      const network: NetworkSummary = {
+        id: active.network.id,
+        name: active.network.name,
+        mspId: active.network.mspId,
+        channels: active.network.channels,
+      };
+      return [network];
+    }
+    case "weft_evaluate":
+    case "weft_submit":
+      return runCall(origin, method, params);
+  }
+}

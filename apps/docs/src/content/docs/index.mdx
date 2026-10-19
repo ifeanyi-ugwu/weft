@@ -1,0 +1,36 @@
+---
+title: weft
+description: An identity wallet for Hyperledger Fabric. Hold your organisation's certificate in the browser and sign transactions you can actually read.
+template: splash
+hero:
+  tagline: An identity wallet for Hyperledger Fabric. The network is the warp; your identity and transactions are the weft, woven through it.
+  image:
+    file: ../../assets/mark.svg
+  actions:
+    - text: Get started
+      link: /start/what-is-weft/
+      icon: right-arrow
+    - text: Build a dApp
+      link: /dapps/quickstart/
+      variant: minimal
+---
+
+import { Card, CardGrid } from "@astrojs/starlight/components";
+
+<CardGrid stagger>
+  <Card title="Identity, not tokens" icon="seti:lock">
+    Fabric has no coins and no gas. Weft holds the X.509 certificate your organisation's CA issued you, shows you when it
+    expires, and renews it in one click.
+  </Card>
+  <Card title="Sign what you can read" icon="document">
+    Every request shows the channel, contract, function and decoded arguments, and says plainly whether it reads or
+    writes the ledger.
+  </Card>
+  <Card title="Keys never leave the browser" icon="approve-check">
+    Private keys are created as non-exportable WebCrypto keys. The relay only ever sees certificates, unsigned messages
+    and signatures.
+  </Card>
+  <Card title="Failures in plain English" icon="information">
+    `ENDORSEMENT_POLICY_FAILURE` becomes "Not enough organisations approved it", with which ones did and didn't.
+  </Card>
+</CardGrid>

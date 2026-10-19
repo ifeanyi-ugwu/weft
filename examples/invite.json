@@ -1,0 +1,10 @@
+{
+  "weft": 1,
+  "network": "Fabric test network",
+  "organization": "Org1",
+  "mspId": "Org1MSP",
+  "caUrl": "https://localhost:7054",
+  "caName": "ca-org1",
+  "relayUrl": "http://localhost:8787",
+  "channels": ["mychannel"]
+}
